@@ -129,7 +129,7 @@ export function Initialize() {
     0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0xAA, 0x55,
   ];
   while (packet.length < 64) packet.push(0x00);
-  device.write(packet);
+  device.write(packet, 2);
 }
 
 /**
@@ -162,7 +162,7 @@ export function Render() {
     }
 
     while (packet.length < 64) packet.push(0x00);
-    device.write(packet);
+    device.write(packet, 2);
   }
 }
 
