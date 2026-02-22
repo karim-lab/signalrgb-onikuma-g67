@@ -124,12 +124,13 @@ export function Validate(device) {
  * Switches keyboard into per-key custom RGB mode (0x80 flag).
  */
 export function Initialize() {
-  const packet = [
+  const packet = new Uint8Array(64);
+  const data = [
     0xAA, 0x23, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0xAA, 0x55,
   ];
-  while (packet.length < 64) packet.push(0x00);
+  for (let i = 0; i < data.length; i++) packet[i] = data[i];
   device.write(packet);
 }
 
@@ -155,15 +156,17 @@ export function Render() {
     const lowByte  = address & 0xFF;
     const highByte = (address >> 8) & 0xFF;
 
-    const packet = [0xAA, 0x24, 0x38, lowByte, highByte, 0x00, 0x00, 0x00];
+    const packet = new Uint8Array(64);
+    packet[0] = 0xAA; packet[1] = 0x24; packet[2] = 0x38;
+    packet[3] = lowByte; packet[4] = highByte;
 
     for (let offset = 0; offset < CHUNK; offset++) {
       const keyIdx = base + offset;
       const [r, g, b] = keyIdx < 128 ? map[keyIdx] : [0, 0, 0];
-      packet.push(keyIdx, r, g, b);
+      const pos = 8 + offset * 4;
+      packet[pos] = keyIdx; packet[pos+1] = r; packet[pos+2] = g; packet[pos+3] = b;
     }
 
-    while (packet.length < 64) packet.push(0x00);
     device.write(packet);
   }
 }
