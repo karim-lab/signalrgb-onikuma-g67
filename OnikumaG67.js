@@ -111,6 +111,14 @@ const LED_COUNT = LEDS.length;
 // -----------------------------------------------------------------
 
 /**
+ * Called by SignalRGB to verify this is the correct device.
+ * Must return true for the plugin to initialize.
+ */
+export function Validate(device) {
+  return device.idVendor === 0x0C45 && device.idProduct === 0x8043;
+}
+
+/**
  * Called once on plugin load.
  * Switches keyboard into per-key custom RGB mode (0x80 flag).
  */
