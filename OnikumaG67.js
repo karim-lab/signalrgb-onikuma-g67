@@ -12,8 +12,8 @@ export function Name()       { return "Onikuma G67"; }
 export function Publisher()  { return "Community"; }
 export function Version()    { return "1.0.0"; }
 export function Type()       { return "Hid"; }
-export function ProductId()  { return ["8043"]; }
-export function VendorId()   { return ["0c45"]; }
+export function ProductId()  { return [0x8043]; }
+export function VendorId()   { return [0x0C45]; }
 export function DeviceType() { return "keyboard"; }
 
 // -----------------------------------------------------------------
