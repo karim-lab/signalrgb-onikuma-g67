@@ -69,7 +69,7 @@ export function Initialize() {
 	];
 	while (packet.length < 65) packet.push(0x00);
 	device.write(packet, 65);
-	device.pause(100);
+	device.pause(50);
 }
 
 export function Render() {
@@ -119,6 +119,5 @@ function pushToKeyboard(map) {
 
 		while (packet.length < 65) packet.push(0x00);
 		device.write(packet, 65);
-		device.pause(2); // Small pause between packets to avoid flooding HID
-	}
+			}
 }
