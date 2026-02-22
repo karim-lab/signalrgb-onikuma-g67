@@ -1,0 +1,9 @@
+{
+  "name": "signalrgb-onikuma-g67",
+  "version": "1.0.0",
+  "description": "SignalRGB plugin for Onikuma G67 keyboard (VID: 0x0C45, PID: 0x8043)",
+  "main": "OnikumaG67.js",
+  "scripts": {},
+  "author": "karim-lab",
+  "license": "MIT"
+}
