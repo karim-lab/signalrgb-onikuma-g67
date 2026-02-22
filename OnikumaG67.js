@@ -142,8 +142,9 @@ export function Render() {
   const map = new Array(128).fill(null).map(() => [0, 0, 0]);
 
   for (let i = 0; i < LED_COUNT; i++) {
-    const color = device.color(i);
-    map[LEDS[i].idx] = [color[0], color[1], color[2]];
+    const led = LEDS[i];
+    const color = device.color(led.col, led.row);
+    map[led.idx] = [color[0], color[1], color[2]];
   }
 
   // Send in 14-key chunks matching the protocol structure
