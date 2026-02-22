@@ -15,6 +15,7 @@ export function Type()       { return "Hid"; }
 export function ProductId()  { return [0x8043]; }
 export function VendorId()   { return [0x0C45]; }
 export function DeviceType() { return "keyboard"; }
+export function Endpoint()   { return { "usage": 0x0061, "usage_page": 0xff68 }; }
 
 // -----------------------------------------------------------------
 // LED Layout
@@ -129,7 +130,7 @@ export function Initialize() {
     0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0xAA, 0x55,
   ];
   while (packet.length < 64) packet.push(0x00);
-  device.write(packet, 2);
+  device.write(packet);
 }
 
 /**
@@ -162,7 +163,7 @@ export function Render() {
     }
 
     while (packet.length < 64) packet.push(0x00);
-    device.write(packet, 2);
+    device.write(packet);
   }
 }
 
