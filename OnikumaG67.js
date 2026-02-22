@@ -6,7 +6,7 @@
 
 export function Name()       { return "Onikuma G67"; }
 export function Publisher()  { return "Community"; }
-export function Version()    { return "1.0.0"; }
+export function Version()    { return "1.0.1"; }
 export function Type()       { return "Hid"; }
 export function ProductId()  { return 0x8043; }
 export function VendorId()   { return 0x0C45; }
@@ -45,13 +45,13 @@ const vKeys = [
 ];
 
 const vKeyPositions = [
-	[0, 0],                                                                                                      // ESC
-	[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0], [10, 0], [11, 0], [12, 0], [14, 0], // Number row
-	[0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [6, 1], [7, 1], [8, 1], [9, 1], [10, 1], [11, 1], [12, 1], // QWERTY
-	[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [5, 2], [6, 2], [7, 2], [8, 2], [9, 2], [10, 2], [11, 2], [13, 2], [14, 2], // ASDF
-	[0, 3], [2, 3], [3, 3], [4, 3], [5, 3], [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [14, 3], // ZXCV
-	[0, 4], [1, 4], [2, 4], [6, 4], [10, 4], [11, 4], [12, 4], [13, 4], [14, 4],                               // Bottom
-	[16, 1], [16, 2], [16, 3], [16, 4]                                                                          // Nav
+	[0, 0],
+	[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0], [10, 0], [11, 0], [12, 0], [14, 0],
+	[0, 1], [1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [6, 1], [7, 1], [8, 1], [9, 1], [10, 1], [11, 1], [12, 1],
+	[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [5, 2], [6, 2], [7, 2], [8, 2], [9, 2], [10, 2], [11, 2], [13, 2], [14, 2],
+	[0, 3], [2, 3], [3, 3], [4, 3], [5, 3], [6, 3], [7, 3], [8, 3], [9, 3], [10, 3], [11, 3], [12, 3], [14, 3],
+	[0, 4], [1, 4], [2, 4], [6, 4], [10, 4], [11, 4], [12, 4], [13, 4], [14, 4],
+	[16, 1], [16, 2], [16, 3], [16, 4]
 ];
 
 export function LedNames()     { return vKeyNames; }
@@ -62,11 +62,14 @@ export function LedPositions() { return vKeyPositions; }
 // -----------------------------------------------------------------
 
 export function Initialize() {
-	// Switch keyboard to per-key custom RGB mode
-	device.write([0x00, 0xAA, 0x23, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00,
+	const packet = [
+		0x00, 0xAA, 0x23, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0xAA, 0x55], 65);
-	device.pause(50);
+		0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0xAA, 0x55
+	];
+	while (packet.length < 65) packet.push(0x00);
+	device.write(packet, 65);
+	device.pause(100);
 }
 
 export function Render() {
@@ -74,13 +77,12 @@ export function Render() {
 }
 
 export function Shutdown() {
-	// Clear all LEDs
-	const map = new Array(128).fill(0).map(() => [0, 0, 0]);
+	// Clear all to black
+	const map = new Array(128).fill(null).map(() => [0, 0, 0]);
 	pushToKeyboard(map);
 }
 
 function sendColors() {
-	// Build hardware map
 	const map = new Array(128).fill(null).map(() => [0, 0, 0]);
 
 	for (let i = 0; i < vKeys.length; i++) {
@@ -96,11 +98,17 @@ function pushToKeyboard(map) {
 	const CHUNK = 14;
 
 	for (let base = 0; base < 128; base += CHUNK) {
+		// Only send chunks that contain at least one of our actual keys
+		let hasKey = false;
+		for (let offset = 0; offset < CHUNK; offset++) {
+			if (vKeys.indexOf(base + offset) !== -1) { hasKey = true; break; }
+		}
+		if (!hasKey) continue;
+
 		const address  = base * 4;
 		const lowByte  = address & 0xFF;
 		const highByte = (address >> 8) & 0xFF;
 
-		// Report ID 0x00 + header
 		const packet = [0x00, 0xAA, 0x24, 0x38, lowByte, highByte, 0x00, 0x00, 0x00];
 
 		for (let offset = 0; offset < CHUNK; offset++) {
@@ -109,9 +117,8 @@ function pushToKeyboard(map) {
 			packet.push(keyIdx, r, g, b);
 		}
 
-		// Pad to 65 bytes (report ID + 64)
 		while (packet.length < 65) packet.push(0x00);
-
 		device.write(packet, 65);
+		device.pause(2); // Small pause between packets to avoid flooding HID
 	}
 }
