@@ -6,7 +6,7 @@
 
 export function Name()       { return "Onikuma G67"; }
 export function Publisher()  { return "Community"; }
-export function Version()    { return "1.0.1"; }
+export function Version()    { return "1.0.2"; }
 export function Type()       { return "Hid"; }
 export function ProductId()  { return 0x8043; }
 export function VendorId()   { return 0x0C45; }
@@ -33,15 +33,14 @@ const vKeyNames = [
 	"Home", "PageUp", "End", "PageDown"
 ];
 
-// Hardware indices matching each key above
 const vKeys = [
-	0,                                                          // ESC
-	17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 92,       // Number row + Backspace
-	32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,       // QWERTY row
-	48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 76,   // ASDF row + Enter
-	64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 90,       // ZXCV row + Up
-	80, 81, 82, 83, 84, 85, 88, 89, 91,                        // Bottom row + arrows
-	104, 105, 107, 108                                          // Nav cluster
+	0,
+	17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 92,
+	32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
+	48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 76,
+	64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 90,
+	80, 81, 82, 83, 84, 85, 88, 89, 91,
+	104, 105, 107, 108
 ];
 
 const vKeyPositions = [
@@ -54,12 +53,20 @@ const vKeyPositions = [
 	[16, 1], [16, 2], [16, 3], [16, 4]
 ];
 
+// Pre-computed: which chunks (base indices) actually contain our keys
+// Chunks: 0,14,28,42,56,70,84,98 — all 8 need to be sent
+const ACTIVE_CHUNKS = [0, 14, 28, 42, 56, 70, 84, 98];
+
+// Pre-build a Set for fast lookup
+const vKeySet = new Set(vKeys);
+
 export function LedNames()     { return vKeyNames; }
 export function LedPositions() { return vKeyPositions; }
 
 // -----------------------------------------------------------------
-// Plugin Lifecycle
+// Dirty tracking — only send chunks that changed
 // -----------------------------------------------------------------
+let lastMap = new Array(128).fill(null).map(() => [-1, -1, -1]);
 
 export function Initialize() {
 	const packet = [
@@ -77,33 +84,37 @@ export function Render() {
 }
 
 export function Shutdown() {
-	// Clear all to black
 	const map = new Array(128).fill(null).map(() => [0, 0, 0]);
-	pushToKeyboard(map);
+	pushToKeyboard(map, true);
 }
 
 function sendColors() {
 	const map = new Array(128).fill(null).map(() => [0, 0, 0]);
-
 	for (let i = 0; i < vKeys.length; i++) {
 		const [x, y] = vKeyPositions[i];
 		const color = device.color(x, y);
 		map[vKeys[i]] = [color[0], color[1], color[2]];
 	}
-
-	pushToKeyboard(map);
+	pushToKeyboard(map, false);
 }
 
-function pushToKeyboard(map) {
+function pushToKeyboard(map, force) {
 	const CHUNK = 14;
 
-	for (let base = 0; base < 128; base += CHUNK) {
-		// Only send chunks that contain at least one of our actual keys
-		let hasKey = false;
-		for (let offset = 0; offset < CHUNK; offset++) {
-			if (vKeys.indexOf(base + offset) !== -1) { hasKey = true; break; }
+	for (const base of ACTIVE_CHUNKS) {
+		// Check if anything in this chunk changed
+		let changed = force;
+		if (!changed) {
+			for (let offset = 0; offset < CHUNK; offset++) {
+				const idx = base + offset;
+				if (idx < 128 && vKeySet.has(idx)) {
+					const [r, g, b] = map[idx];
+					const [lr, lg, lb] = lastMap[idx];
+					if (r !== lr || g !== lg || b !== lb) { changed = true; break; }
+				}
+			}
 		}
-		if (!hasKey) continue;
+		if (!changed) continue;
 
 		const address  = base * 4;
 		const lowByte  = address & 0xFF;
@@ -113,11 +124,12 @@ function pushToKeyboard(map) {
 
 		for (let offset = 0; offset < CHUNK; offset++) {
 			const keyIdx = base + offset;
-			const [r, g, b] = map[keyIdx] || [0, 0, 0];
+			const [r, g, b] = (keyIdx < 128 && map[keyIdx]) ? map[keyIdx] : [0, 0, 0];
 			packet.push(keyIdx, r, g, b);
+			if (keyIdx < 128) lastMap[keyIdx] = [r, g, b];
 		}
 
 		while (packet.length < 65) packet.push(0x00);
 		device.write(packet, 65);
-			}
+	}
 }
