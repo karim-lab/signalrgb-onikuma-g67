@@ -92,9 +92,12 @@ export function Render() {
 		colorMap[vKeys[i]] = [color[0], color[1], color[2]];
 	}
 
-	// Send exactly ONE chunk per frame, rotating through all 8
-	sendChunk(ACTIVE_CHUNKS[chunkCursor]);
-	chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
+	// Send 3 chunks per frame, rotating through all 8
+	// Full keyboard refresh every ~2.7 frames (~11 updates/sec at 30fps)
+	for (let i = 0; i < 3; i++) {
+		sendChunk(ACTIVE_CHUNKS[chunkCursor]);
+		chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
+	}
 }
 
 export function Shutdown() {
