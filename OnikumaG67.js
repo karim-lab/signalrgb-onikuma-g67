@@ -6,7 +6,7 @@
 
 export function Name()       { return "Onikuma G67"; }
 export function Publisher()  { return "Community"; }
-export function Version()    { return "1.0.2"; }
+export function Version()    { return "1.0.3"; }
 export function Type()       { return "Hid"; }
 export function ProductId()  { return 0x8043; }
 export function VendorId()   { return 0x0C45; }
@@ -20,9 +20,6 @@ export function Validate(endpoint) {
 	return endpoint.interface === 2;
 }
 
-// -----------------------------------------------------------------
-// LED Layout - confirmed by hardware testing
-// -----------------------------------------------------------------
 const vKeyNames = [
 	"ESC",
 	"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Minus", "Equals", "Backspace",
@@ -53,83 +50,72 @@ const vKeyPositions = [
 	[16, 1], [16, 2], [16, 3], [16, 4]
 ];
 
-// Pre-computed: which chunks (base indices) actually contain our keys
-// Chunks: 0,14,28,42,56,70,84,98 — all 8 need to be sent
+// All 8 chunks that contain our keys
 const ACTIVE_CHUNKS = [0, 14, 28, 42, 56, 70, 84, 98];
-
-// Pre-build a Set for fast lookup
-const vKeySet = new Set(vKeys);
+const CHUNK = 14;
 
 export function LedNames()     { return vKeyNames; }
 export function LedPositions() { return vKeyPositions; }
 
-// -----------------------------------------------------------------
-// Dirty tracking — only send chunks that changed
-// -----------------------------------------------------------------
-let lastMap = new Array(128).fill(null).map(() => [-1, -1, -1]);
+// Rotating chunk index — send 1 chunk per frame
+let chunkCursor = 0;
+
+// Full color map persisted across frames
+let colorMap = new Array(128).fill(null).map(() => [0, 0, 0]);
 
 export function Initialize() {
-	const packet = [
+	// Send init packet multiple times to ensure keyboard switches mode
+	// Original Python scripts used this exact payload
+	const initData = [
 		0x00, 0xAA, 0x23, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0xAA, 0x55
 	];
-	while (packet.length < 65) packet.push(0x00);
-	device.write(packet, 65);
+	while (initData.length < 65) initData.push(0x00);
+
+	// Send 3 times to make sure it sticks
+	device.write(initData, 65);
 	device.pause(50);
+	device.write(initData, 65);
+	device.pause(50);
+	device.write(initData, 65);
+	device.pause(100);
+
+	chunkCursor = 0;
 }
 
 export function Render() {
-	sendColors();
-}
-
-export function Shutdown() {
-	const map = new Array(128).fill(null).map(() => [0, 0, 0]);
-	pushToKeyboard(map, true);
-}
-
-function sendColors() {
-	const map = new Array(128).fill(null).map(() => [0, 0, 0]);
+	// Update full color map from SignalRGB canvas
 	for (let i = 0; i < vKeys.length; i++) {
 		const [x, y] = vKeyPositions[i];
 		const color = device.color(x, y);
-		map[vKeys[i]] = [color[0], color[1], color[2]];
+		colorMap[vKeys[i]] = [color[0], color[1], color[2]];
 	}
-	pushToKeyboard(map, false);
+
+	// Send exactly ONE chunk per frame, rotating through all 8
+	sendChunk(ACTIVE_CHUNKS[chunkCursor]);
+	chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
 }
 
-function pushToKeyboard(map, force) {
-	const CHUNK = 14;
+export function Shutdown() {
+	// Clear everything
+	colorMap = new Array(128).fill(null).map(() => [0, 0, 0]);
+	for (const base of ACTIVE_CHUNKS) sendChunk(base);
+}
 
-	for (const base of ACTIVE_CHUNKS) {
-		// Check if anything in this chunk changed
-		let changed = force;
-		if (!changed) {
-			for (let offset = 0; offset < CHUNK; offset++) {
-				const idx = base + offset;
-				if (idx < 128 && vKeySet.has(idx)) {
-					const [r, g, b] = map[idx];
-					const [lr, lg, lb] = lastMap[idx];
-					if (r !== lr || g !== lg || b !== lb) { changed = true; break; }
-				}
-			}
-		}
-		if (!changed) continue;
+function sendChunk(base) {
+	const address  = base * 4;
+	const lowByte  = address & 0xFF;
+	const highByte = (address >> 8) & 0xFF;
 
-		const address  = base * 4;
-		const lowByte  = address & 0xFF;
-		const highByte = (address >> 8) & 0xFF;
+	const packet = [0x00, 0xAA, 0x24, 0x38, lowByte, highByte, 0x00, 0x00, 0x00];
 
-		const packet = [0x00, 0xAA, 0x24, 0x38, lowByte, highByte, 0x00, 0x00, 0x00];
-
-		for (let offset = 0; offset < CHUNK; offset++) {
-			const keyIdx = base + offset;
-			const [r, g, b] = (keyIdx < 128 && map[keyIdx]) ? map[keyIdx] : [0, 0, 0];
-			packet.push(keyIdx, r, g, b);
-			if (keyIdx < 128) lastMap[keyIdx] = [r, g, b];
-		}
-
-		while (packet.length < 65) packet.push(0x00);
-		device.write(packet, 65);
+	for (let offset = 0; offset < CHUNK; offset++) {
+		const keyIdx = base + offset;
+		const [r, g, b] = (keyIdx < 128 && colorMap[keyIdx]) ? colorMap[keyIdx] : [0, 0, 0];
+		packet.push(keyIdx, r, g, b);
 	}
+
+	while (packet.length < 65) packet.push(0x00);
+	device.write(packet, 65);
 }
