@@ -67,18 +67,18 @@ export function Initialize() {
 	// Send init packet multiple times to ensure keyboard switches mode
 	// Original Python scripts used this exact payload
 	const initData = [
-		0xAA, 0x23, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0xAA, 0x23, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0xAA, 0x55
 	];
-	while (initData.length < 64) initData.push(0x00);
+	while (initData.length < 65) initData.push(0x00);
 
 	// Send 3 times to make sure it sticks
-	device.write(initData, 64);
+	device.write(initData, 65);
 	device.pause(50);
-	device.write(initData, 64);
+	device.write(initData, 65);
 	device.pause(50);
-	device.write(initData, 64);
+	device.write(initData, 65);
 	device.pause(100);
 
 	chunkCursor = 0;
@@ -108,7 +108,7 @@ function sendChunk(base) {
 	const lowByte  = address & 0xFF;
 	const highByte = (address >> 8) & 0xFF;
 
-	const packet = [0xAA, 0x24, 0x38, lowByte, highByte, 0x00, 0x00, 0x00];
+	const packet = [0x00, 0xAA, 0x24, 0x38, lowByte, highByte, 0x00, 0x00, 0x00];
 
 	for (let offset = 0; offset < CHUNK; offset++) {
 		const keyIdx = base + offset;
@@ -116,6 +116,6 @@ function sendChunk(base) {
 		packet.push(keyIdx, r, g, b);
 	}
 
-	while (packet.length < 64) packet.push(0x00);
-	device.write(packet, 64);
+	while (packet.length < 65) packet.push(0x00);
+	device.write(packet, 65);
 }
