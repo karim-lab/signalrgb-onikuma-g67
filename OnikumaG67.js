@@ -6,7 +6,7 @@
 
 export function Name()       { return "Onikuma G67"; }
 export function Publisher()  { return "Community"; }
-export function Version()    { return "1.0.3"; }
+export function Version()    { return "1.0.4"; }
 export function Type()       { return "Hid"; }
 export function ProductId()  { return 0x8043; }
 export function VendorId()   { return 0x0C45; }
@@ -50,77 +50,53 @@ const vKeyPositions = [
 	[16, 1], [16, 2], [16, 3], [16, 4]
 ];
 
-// All 8 chunks that contain our keys
 const ACTIVE_CHUNKS = [0, 14, 28, 42, 56, 70, 84, 98];
 const CHUNK = 14;
 
 export function LedNames()     { return vKeyNames; }
 export function LedPositions() { return vKeyPositions; }
 
-// Rotating chunk index — send 2 chunks per frame
+// Send one chunk per frame, rotating — exactly like Python's loop + sleep(0.02)
+// At 30fps, one chunk every 33ms ≈ matches Python's 20ms per chunk
+// Full keyboard refresh every 8 frames (~267ms)
 let chunkCursor = 0;
-
-// Full color map persisted across frames
 let colorMap = new Array(128).fill(null).map(() => [0, 0, 0]);
 
-// Last sent color map for dirty tracking
-let lastSentMap = new Array(128).fill(null).map(() => [-1, -1, -1]);
-
-// Track which chunks are dirty (need resending)
-let dirtyChunks = new Set(ACTIVE_CHUNKS); // all dirty on startup
-
-
-
 export function Initialize() {
-	// Send init packet multiple times to ensure keyboard switches mode
-	// Original Python scripts used this exact payload
 	const initData = [
 		0x00, 0xAA, 0x23, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0xAA, 0x55
 	];
 	while (initData.length < 65) initData.push(0x00);
-
-	// Send 3 times to make sure it sticks
 	device.write(initData, 65);
 	device.pause(50);
 	device.write(initData, 65);
 	device.pause(50);
 	device.write(initData, 65);
-	device.pause(100);
-
+	device.pause(500); // Match Python's time.sleep(0.5) after init
 	chunkCursor = 0;
 }
 
 export function Render() {
-	// Update color map and mark chunks dirty when colors change
+	// Update full color map
 	for (let i = 0; i < vKeys.length; i++) {
 		const [x, y] = vKeyPositions[i];
 		const color = device.color(x, y);
-		const idx = vKeys[i];
-		const [r, g, b] = color;
-		if (r !== colorMap[idx][0] || g !== colorMap[idx][1] || b !== colorMap[idx][2]) {
-			colorMap[idx] = [r, g, b];
-			// Find and mark the owning chunk dirty
-			for (const c of ACTIVE_CHUNKS) {
-				if (idx >= c && idx < c + CHUNK) { dirtyChunks.add(c); break; }
-			}
-		}
+		colorMap[vKeys[i]] = [color[0], color[1], color[2]];
 	}
 
-	// Send all dirty chunks this frame — zero writes if nothing changed
-	for (const base of ACTIVE_CHUNKS) {
-		if (dirtyChunks.has(base)) {
-			sendChunk(base);
-			dirtyChunks.delete(base);
-		}
-	}
+	// Send exactly one chunk per frame — matches Python's time.sleep(0.02) pacing
+	sendChunk(ACTIVE_CHUNKS[chunkCursor]);
+	chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
 }
 
 export function Shutdown() {
-	// Clear everything
 	colorMap = new Array(128).fill(null).map(() => [0, 0, 0]);
-	for (const base of ACTIVE_CHUNKS) sendChunk(base);
+	for (const base of ACTIVE_CHUNKS) {
+		sendChunk(base);
+		device.pause(20);
+	}
 }
 
 function sendChunk(base) {
