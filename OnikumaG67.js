@@ -69,6 +69,11 @@ let lastSentMap = new Array(128).fill(null).map(() => [-1, -1, -1]);
 // Track which chunks are dirty (need resending)
 let dirtyChunks = new Set(ACTIVE_CHUNKS); // all dirty on startup
 
+// Frame skip — only process every Nth frame to reduce USB contention
+// At 30fps target, skip=3 gives ~10 actual RGB updates/sec
+const FRAME_SKIP = 3;
+let frameCount = 0;
+
 export function Initialize() {
 	// Send init packet multiple times to ensure keyboard switches mode
 	// Original Python scripts used this exact payload
@@ -91,6 +96,10 @@ export function Initialize() {
 }
 
 export function Render() {
+	// Skip frames to reduce USB bus contention with 8kHz polling
+	frameCount++;
+	if (frameCount % FRAME_SKIP !== 0) return;
+
 	// Update color map and mark chunks dirty when colors change
 	for (let i = 0; i < vKeys.length; i++) {
 		const [x, y] = vKeyPositions[i];
