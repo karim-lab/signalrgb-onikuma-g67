@@ -57,11 +57,17 @@ const CHUNK = 14;
 export function LedNames()     { return vKeyNames; }
 export function LedPositions() { return vKeyPositions; }
 
-// Rotating chunk index — send 1 chunk per frame
+// Rotating chunk index — send 2 chunks per frame
 let chunkCursor = 0;
 
 // Full color map persisted across frames
 let colorMap = new Array(128).fill(null).map(() => [0, 0, 0]);
+
+// Last sent color map for dirty tracking
+let lastSentMap = new Array(128).fill(null).map(() => [-1, -1, -1]);
+
+// Track which chunks are dirty (need resending)
+let dirtyChunks = new Set(ACTIVE_CHUNKS); // all dirty on startup
 
 export function Initialize() {
 	// Send init packet multiple times to ensure keyboard switches mode
@@ -85,19 +91,33 @@ export function Initialize() {
 }
 
 export function Render() {
-	// Update full color map from SignalRGB canvas
+	// Update color map and mark chunks dirty when colors change
 	for (let i = 0; i < vKeys.length; i++) {
 		const [x, y] = vKeyPositions[i];
 		const color = device.color(x, y);
-		colorMap[vKeys[i]] = [color[0], color[1], color[2]];
+		const idx = vKeys[i];
+		const [r, g, b] = color;
+		if (r !== colorMap[idx][0] || g !== colorMap[idx][1] || b !== colorMap[idx][2]) {
+			colorMap[idx] = [r, g, b];
+			// Find and mark the owning chunk dirty
+			for (const c of ACTIVE_CHUNKS) {
+				if (idx >= c && idx < c + CHUNK) { dirtyChunks.add(c); break; }
+			}
+		}
 	}
 
-	// Send 2 chunks per frame, rotating through all 8
-	// Full keyboard refresh every 4 frames (~7.5 updates/sec at 30fps)
-	for (let i = 0; i < 2; i++) {
-		sendChunk(ACTIVE_CHUNKS[chunkCursor]);
+	// Send up to 2 dirty chunks this frame — if nothing changed, send nothing
+	let sent = 0;
+	const startCursor = chunkCursor;
+	do {
+		const base = ACTIVE_CHUNKS[chunkCursor];
 		chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
-	}
+		if (dirtyChunks.has(base)) {
+			sendChunk(base);
+			dirtyChunks.delete(base);
+			sent++;
+		}
+	} while (sent < 2 && chunkCursor !== startCursor);
 }
 
 export function Shutdown() {
