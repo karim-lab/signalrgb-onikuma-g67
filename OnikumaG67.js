@@ -86,7 +86,9 @@ export function Render() {
 		colorMap[vKeys[i]] = [color[0], color[1], color[2]];
 	}
 
-	// Send exactly one chunk per frame — matches Python's time.sleep(0.02) pacing
+	// Send 2 chunks per frame — full refresh every 4 frames (~15fps of LED updates)
+	sendChunk(ACTIVE_CHUNKS[chunkCursor]);
+	chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
 	sendChunk(ACTIVE_CHUNKS[chunkCursor]);
 	chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
 }
