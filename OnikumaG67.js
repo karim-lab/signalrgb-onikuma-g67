@@ -1,11 +1,16 @@
 /**
  * Onikuma G67 - SignalRGB Plugin
+ * 
+ * Enables per-key RGB control of the Onikuma G67 67-key keyboard.
+ * Protocol reverse-engineered via USB/HID analysis.
+ * 
  * VID: 0x0C45  PID: 0x8043  Interface: 2
+ * Author: Kareem Yasser (karim-lab)
  */
 
 export function Name()       { return "Onikuma G67"; }
-export function Publisher()  { return "Community"; }
-export function Version()    { return "1.0.5"; }
+export function Publisher()  { return "karim-lab"; }
+export function Version()    { return "1.0.0"; }
 export function Type()       { return "Hid"; }
 export function ProductId()  { return 0x8043; }
 export function VendorId()   { return 0x0C45; }
@@ -17,6 +22,10 @@ export function ImageUrl()   { return "https://raw.githubusercontent.com/karim-l
 
 export function Validate(endpoint) { return endpoint.interface === 2; }
 
+// -----------------------------------------------------------------
+// Key Layout
+// -----------------------------------------------------------------
+
 const vKeyNames = [
 	"ESC",
 	"1","2","3","4","5","6","7","8","9","0","Minus","Equals","Backspace",
@@ -27,6 +36,7 @@ const vKeyNames = [
 	"Home","PageUp","End","PageDown"
 ];
 
+// Hardware memory indices for each key (reverse-engineered)
 const vKeys = [
 	0,
 	17,18,19,20,21,22,23,24,25,26,27,28,92,
@@ -37,6 +47,7 @@ const vKeys = [
 	104,105,107,108
 ];
 
+// Grid positions for SignalRGB canvas mapping [col, row]
 const vKeyPositions = [
 	[0,0],
 	[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[9,0],[10,0],[11,0],[12,0],[14,0],
@@ -51,15 +62,16 @@ export function LedNames()     { return vKeyNames; }
 export function LedPositions() { return vKeyPositions; }
 
 // -----------------------------------------------------------------
-// Pre-built packet buffers — built once, color bytes updated in place
-// This avoids rebuilding arrays every frame
+// Protocol: 14 keys per packet, rotating one chunk per frame
+// Sending more than 1 chunk per frame causes HID contention
 // -----------------------------------------------------------------
+
 const ACTIVE_CHUNKS = [0, 14, 28, 42, 56, 70, 84, 98];
 const CHUNK = 14;
 
-// Build packet buffers once at load time
+// Pre-build packet buffers once — avoids array allocation every frame
 const packetBuffers = ACTIVE_CHUNKS.map(base => {
-	const address  = base * 4;
+	const address = base * 4;
 	const packet = [
 		0x00, 0xAA, 0x24, 0x38,
 		address & 0xFF,
@@ -67,41 +79,44 @@ const packetBuffers = ACTIVE_CHUNKS.map(base => {
 		0x00, 0x00, 0x00
 	];
 	for (let offset = 0; offset < CHUNK; offset++) {
-		packet.push(base + offset, 0, 0, 0); // keyIdx, r, g, b
+		packet.push(base + offset, 0, 0, 0);
 	}
 	while (packet.length < 65) packet.push(0x00);
 	return packet;
 });
 
-// Pre-compute: for each key, which packet buffer + byte offset to update
-// Layout: packet[9 + offset*4 + 1] = r, +2 = g, +3 = b
+// Pre-compute buffer locations for each key's RGB bytes
 const keyLookup = vKeys.map(keyIdx => {
 	const chunkIdx = ACTIVE_CHUNKS.findIndex(c => keyIdx >= c && keyIdx < c + CHUNK);
 	const offset = keyIdx - ACTIVE_CHUNKS[chunkIdx];
-	const bytePos = 9 + offset * 4 + 1; // +1 to skip the keyIdx byte
-	return { chunkIdx, bytePos };
+	return { chunkIdx, bytePos: 9 + offset * 4 + 1 };
 });
 
 let chunkCursor = 0;
 
+// -----------------------------------------------------------------
+// Lifecycle
+// -----------------------------------------------------------------
+
 export function Initialize() {
-	const initData = [
+	// Switch keyboard into per-key custom RGB mode
+	const initPacket = [
 		0x00, 0xAA, 0x23, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x05, 0x03, 0x00, 0x00, 0x00, 0xAA, 0x55
 	];
-	while (initData.length < 65) initData.push(0x00);
-	device.write(initData, 65);
-	device.pause(50);
-	device.write(initData, 65);
-	device.pause(50);
-	device.write(initData, 65);
-	device.pause(500);
+	while (initPacket.length < 65) initPacket.push(0x00);
+
+	// Send 3x to ensure the keyboard registers the mode switch
+	device.write(initPacket, 65); device.pause(50);
+	device.write(initPacket, 65); device.pause(50);
+	device.write(initPacket, 65); device.pause(500);
+
 	chunkCursor = 0;
 }
 
 export function Render() {
-	// Update color bytes directly in pre-built buffers — no array allocation
+	// Update RGB bytes directly in pre-built buffers
 	for (let i = 0; i < vKeys.length; i++) {
 		const [x, y] = vKeyPositions[i];
 		const color = device.color(x, y);
@@ -111,21 +126,21 @@ export function Render() {
 		packetBuffers[chunkIdx][bytePos + 2] = color[2];
 	}
 
-	// Send 2 chunks per frame
-	device.write(packetBuffers[chunkCursor], 65);
-	chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
+	// Send one chunk per frame — rotating through all 8
+	// Full keyboard refresh every 8 frames
 	device.write(packetBuffers[chunkCursor], 65);
 	chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
 }
 
 export function Shutdown() {
+	// Clear all keys to black on exit
 	for (const buf of packetBuffers) {
-		// Zero out color bytes
 		for (let i = 0; i < CHUNK; i++) {
 			buf[9 + i*4 + 1] = 0;
 			buf[9 + i*4 + 2] = 0;
 			buf[9 + i*4 + 3] = 0;
 		}
 		device.write(buf, 65);
+		device.pause(20);
 	}
 }
