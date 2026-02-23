@@ -111,7 +111,9 @@ export function Render() {
 		packetBuffers[chunkIdx][bytePos + 2] = color[2];
 	}
 
-	// Send one chunk per frame
+	// Send 2 chunks per frame
+	device.write(packetBuffers[chunkCursor], 65);
+	chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
 	device.write(packetBuffers[chunkCursor], 65);
 	chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
 }
