@@ -108,18 +108,13 @@ export function Render() {
 		}
 	}
 
-	// Send up to 2 dirty chunks this frame — if nothing changed, send nothing
-	let sent = 0;
-	const startCursor = chunkCursor;
-	do {
-		const base = ACTIVE_CHUNKS[chunkCursor];
-		chunkCursor = (chunkCursor + 1) % ACTIVE_CHUNKS.length;
+	// Send all dirty chunks this frame — zero writes if nothing changed
+	for (const base of ACTIVE_CHUNKS) {
 		if (dirtyChunks.has(base)) {
 			sendChunk(base);
 			dirtyChunks.delete(base);
-			sent++;
 		}
-	} while (sent < 2 && chunkCursor !== startCursor);
+	}
 }
 
 export function Shutdown() {
